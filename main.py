@@ -64,8 +64,10 @@ def build_joined_frame(level: str) -> pl.DataFrame:
     new_frame = read_file(file_2026).rename(mapping=normalize(PARTY_MAP_2026))
 
     if level == "Wahlbezirk":
-        # Polling-place names change between elections more often than precinct numbers.
-        joined = old_frame.join(new_frame, on="gebiet-nr", how="inner", suffix="_new")
+        # Full outer join on precinct number so unmatched precincts from either
+        # year are retained (zero-filled) rather than silently dropped.
+        # Polars coalesces the join key automatically in how="full".
+        joined = old_frame.join(new_frame, on="gebiet-nr", how="full", suffix="_new")
         joined = joined.with_columns(
             pl.coalesce(pl.col("gebiet-name_new"), pl.col("gebiet-name")).alias(
                 "gebiet-name"
@@ -88,16 +90,16 @@ parties = old_parties | new_parties
 
 def votes_2021_expr(party: str, df: pl.DataFrame) -> pl.Expr:
     if party in df.columns and party in old_parties:
-        return pl.col(party)
+        return pl.col(party).fill_null(0)
     return pl.lit(0)
 
 
 def votes_2026_expr(party: str, df: pl.DataFrame) -> pl.Expr:
     new_column = f"{party}_new"
     if new_column in df.columns:
-        return pl.col(new_column)
+        return pl.col(new_column).fill_null(0)
     if party in df.columns and party in new_parties:
-        return pl.col(party)
+        return pl.col(party).fill_null(0)
     return pl.lit(0)
 
 
@@ -108,8 +110,11 @@ def compare(party: str, level: str = "Ortsbezirk") -> pl.DataFrame:
         raise ValueError(
             f"Unbekannte Partei '{party}'. Verfügbare Parteien: {available}"
         )
-    canonical = level.capitalize() if level.capitalize() in LEVELS else "Ortsbezirk"
-    df = _frames[canonical]
+    if level not in LEVELS:
+        raise ValueError(
+            f"Unbekannte Gebietsebene '{level}'. Verfügbar: {', '.join(LEVELS)}"
+        )
+    df = _frames[level]
     return (
         df.select(
             "gebiet-name",
@@ -150,7 +155,7 @@ def comparison_payload(party: str, level: str = "Ortsbezirk") -> dict[str, objec
 
     return {
         "party": party.lower(),
-        "level": level,
+        "level": level,  # always a valid LEVELS value — compare() raises otherwise
         "summary": {
             "districts": len(records),
             "total_votes_2021": total_2021,
