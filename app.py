@@ -482,7 +482,7 @@ HTML = """<!doctype html>
       <article class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Ergebnisse nach Ortsbezirk</h2>
+            <h2 id="tableTitle" class="panel-title">Ergebnisse nach Ortsbezirk</h2>
             <p class="panel-copy">Stimmen 2021, Stimmen 2026 und Veränderungen je Gebiet.</p>
           </div>
         </div>
@@ -531,7 +531,14 @@ HTML = """<!doctype html>
     const barList = document.querySelector("#barList");
     const tableBody = document.querySelector("#tableBody");
     const tableGebietHeader = document.querySelector("#tableGebietHeader");
+    const tableTitle = document.querySelector("#tableTitle");
     const listCount = document.querySelector("#listCount");
+
+    function gebietLabel(count = null) {
+      const base = state.level === "Wahlbezirk" ? "Wahlbezirk" : "Ortsbezirk";
+      if (count == null) return base;
+      return `${base}${count === 1 ? "" : "e"}`;
+    }
 
     function formatSignedInt(value) {
       const prefix = value > 0 ? "+" : "";
@@ -574,6 +581,7 @@ HTML = """<!doctype html>
     }
 
     function renderStats(summary) {
+      const gebiete = gebietLabel(summary.districts);
       const cards = [
         {
           label: "Gesamtstimmen 2026",
@@ -585,7 +593,7 @@ HTML = """<!doctype html>
           value: formatSignedPercent(summary.rel_change),
           note: summary.rel_change == null
             ? "Neue Partei ohne Vergleichsbasis aus 2021"
-            : `Über ${summary.districts} Ortsbezirke hinweg`,
+            : `Über ${summary.districts} ${gebiete} hinweg`,
         },
         {
           label: "Größter absoluter Zugewinn",
@@ -618,10 +626,10 @@ HTML = """<!doctype html>
         ...topRows.map((row) => Math.abs(row[mode] ?? 0)),
       );
 
-      listCount.textContent = `${rows.length} Ortsbezirk${rows.length === 1 ? "" : "e"}`;
+      listCount.textContent = `${rows.length} ${gebietLabel(rows.length)}`;
 
       if (!topRows.length) {
-        barList.innerHTML = `<p class="loading">Kein Ortsbezirk passt zum aktuellen Filter.</p>`;
+        barList.innerHTML = `<p class="loading">Kein ${gebietLabel()} passt zum aktuellen Filter.</p>`;
         return;
       }
 
@@ -647,7 +655,7 @@ HTML = """<!doctype html>
 
     function renderTable(rows) {
       if (!rows.length) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="loading">Kein Ortsbezirk passt zum aktuellen Filter.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="loading">Kein ${gebietLabel()} passt zum aktuellen Filter.</td></tr>`;
         return;
       }
 
@@ -664,22 +672,46 @@ HTML = """<!doctype html>
 
     async function loadParties() {
       const response = await fetch("/api/parties");
-      const data = await response.json();
+      const data = await readJson(response);
       state.parties = data.parties;
       partySelect.innerHTML = state.parties.map((party) => `
         <option value="${party}">${party.toUpperCase()}</option>
       `).join("");
+      if (!state.parties.length) {
+        throw new Error("Keine Parteien gefunden.");
+      }
       state.party = state.parties[0];
       partySelect.value = state.party;
+    }
+
+    async function readJson(response) {
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Unerwartete Antwort vom Server (${response.status}).`);
+      }
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `Anfrage fehlgeschlagen (${response.status}).`);
+      }
+
+      return payload;
+    }
+
+    function renderLoadError(message) {
+      stats.innerHTML = "";
+      listCount.textContent = "";
+      barList.innerHTML = `<p class="loading">${message}</p>`;
+      tableBody.innerHTML = `<tr><td colspan="5" class="loading">${message}</td></tr>`;
     }
 
     async function loadPartyData() {
       const url = `/api/compare?party=${encodeURIComponent(state.party)}&level=${encodeURIComponent(state.level)}`;
       const response = await fetch(url);
-      state.payload = await response.json();
-      const gebietLabel = state.level === "Wahlbezirk" ? "Wahlbezirk" : "Ortsbezirk";
-      tableGebietHeader.textContent = gebietLabel;
-      searchInput.placeholder = `${gebietLabel} suchen`;
+      state.payload = await readJson(response);
+      tableTitle.textContent = `Ergebnisse nach ${gebietLabel()}`;
+      tableGebietHeader.textContent = gebietLabel();
+      searchInput.placeholder = `${gebietLabel()} suchen`;
       const rows = filteredRows();
       renderStats(state.payload.summary);
       renderBars(rows);
@@ -725,9 +757,7 @@ HTML = """<!doctype html>
 
     boot().catch((error) => {
       console.error(error);
-      stats.innerHTML = "";
-      barList.innerHTML = `<p class="loading">Beim Laden der Daten ist ein Fehler aufgetreten.</p>`;
-      tableBody.innerHTML = `<tr><td colspan="5" class="loading">Mehr Details findest du in der Browser-Konsole.</td></tr>`;
+      renderLoadError(error.message || "Beim Laden der Daten ist ein Fehler aufgetreten.");
     });
   </script>
 </body>

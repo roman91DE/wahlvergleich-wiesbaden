@@ -53,7 +53,7 @@ def read_file(path: pathlib.Path) -> pl.LazyFrame:
     if not path.exists():
         raise FileNotFoundError(f"Missing election data file: {path}")
     return pl.scan_csv(source=path, separator=";").select(
-        pl.col("gebiet-name", r"^D\d+$")
+        pl.col("gebiet-nr", "gebiet-name", r"^D\d+$")
     )
 
 
@@ -62,9 +62,18 @@ def build_joined_frame(level: str) -> pl.DataFrame:
     file_2026 = DATA_DIR / f"2026_Open-Data-06414000-Stadtverordnetenwahl-{level}.csv"
     old_frame = read_file(file_2021).rename(mapping=normalize(PARTY_MAP_2021))
     new_frame = read_file(file_2026).rename(mapping=normalize(PARTY_MAP_2026))
-    # Inner join for Wahlbezirk since some districts changed between years
-    join_how = "inner" if level == "Wahlbezirk" else "left"
-    joined = old_frame.join(new_frame, on="gebiet-name", how=join_how, suffix="_new")
+
+    if level == "Wahlbezirk":
+        # Polling-place names change between elections more often than precinct numbers.
+        joined = old_frame.join(new_frame, on="gebiet-nr", how="inner", suffix="_new")
+        joined = joined.with_columns(
+            pl.coalesce(pl.col("gebiet-name_new"), pl.col("gebiet-name")).alias(
+                "gebiet-name"
+            )
+        ).drop("gebiet-name_new")
+        return joined.collect()
+
+    joined = old_frame.join(new_frame, on="gebiet-name", how="left", suffix="_new")
     return joined.collect()
 
 
@@ -74,7 +83,7 @@ _frames: dict[str, pl.DataFrame] = {
 
 old_parties = set(normalize(PARTY_MAP_2021).values())
 new_parties = set(normalize(PARTY_MAP_2026).values())
-parties = new_parties
+parties = old_parties | new_parties
 
 
 def votes_2021_expr(party: str, df: pl.DataFrame) -> pl.Expr:
