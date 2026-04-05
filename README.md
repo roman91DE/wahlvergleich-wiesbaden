@@ -1,18 +1,39 @@
 # Wahlvergleich Wiesbaden
 
-Dieses Repo enthält jetzt eine kleine lokale Web-App, mit der sich die Ergebnisse der Wiesbadener Stadtverordnetenwahl 2021 und 2026 interaktiv vergleichen lassen.
+Interaktiver Vergleich der Wiesbadener Stadtverordnetenwahl 2021 und 2026 nach Ortsbezirken.
 
-## Starten
+**Statische Demo:** [roman91de.github.io/wahlvergleich-wiesbaden](https://roman91de.github.io/wahlvergleich-wiesbaden/)
+
+## Funktionen
+
+- Vergleich aller Parteien zwischen den Wahljahren 2021 und 2026
+- Absolute und relative Veränderungen je Ortsbezirk
+- Zusammenfassende Kennzahlen und Rangliste der stärksten Verschiebungen
+- Durchsuchbare Ergebnistabelle
+
+## Lokale Web-App starten
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run python app.py
 ```
 
-Anschließend `http://127.0.0.1:8000` im Browser öffnen.
+Anschließend `http://127.0.0.1:8000` im Browser öffnen. `HOST` und `PORT` können über Umgebungsvariablen angepasst werden.
 
-## Funktionen
+## Aufbau
 
-- Nutzt die Vergleichslogik aus [main.py](/Users/roman/repos/test_reports/main.py)
-- Erlaubt den interaktiven Wechsel zwischen Parteien
-- Zeigt absolute und relative Veränderungen je Ortsbezirk
-- Enthält Kennzahlen, eine Rangliste der stärksten Verschiebungen und eine durchsuchbare Ergebnistabelle
+| Datei/Ordner | Beschreibung |
+|---|---|
+| `data/2021.csv`, `data/2026.csv` | Rohdaten der Wahlergebnisse je Ortsbezirk |
+| `main.py` | Datenverarbeitung mit Polars, Vergleichslogik |
+| `app.py` | Lokaler Webserver (stdlib `ThreadingHTTPServer`), SPA als Inline-HTML |
+| `docs/` | Statisch generierte Site für GitHub Pages |
+| `main.ipynb` | Exploratives Notebook |
+
+## Abhängigkeiten
+
+Abhängigkeiten werden über `uv` verwaltet (siehe `pyproject.toml`). Hauptabhängigkeiten: `polars`, `jupyterlab`.
+
+```bash
+# Notebook starten
+uv run jupyter lab
+```
